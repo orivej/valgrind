@@ -810,6 +810,12 @@
 #define	__NR_abort_with_payload     VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(521)
 #endif /* DARWIN_VERS >= DARWIN_10_12 */
 
+// TODO Update with macOS 10.13 kernel (xnu) source code release
+#if DARWIN_VERS >= DARWIN_10_13
+			/* 522  */
+			/* 5xx  */
+#endif /* DARWIN_VERS >= DARWIN_10_13 */
+
 #if DARWIN_VERS < DARWIN_10_6
 #define	__NR_MAXSYSCALL             VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(427)
 #elif DARWIN_VERS < DARWIN_10_7
@@ -824,6 +830,9 @@
 #define __NR_MAXSYSCALL             VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(500)
 #elif DARWIN_VERS == DARWIN_10_12
 #define __NR_MAXSYSCALL             VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(522)
+#elif DARWIN_VERS == DARWIN_10_13
+// TODO Confirm against final release
+#define __NR_MAXSYSCALL             VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(523)
 #else
 #error unknown darwin version
 #endif
