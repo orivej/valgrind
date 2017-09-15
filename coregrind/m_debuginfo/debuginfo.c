@@ -68,7 +68,7 @@
 
 /* Set this to 1 to enable debug printing for the
    should-we-load-debuginfo-now? finite state machine. */
-#define DEBUG_FSM 0
+#define DEBUG_FSM 1
 
 
 /*------------------------------------------------------------*/

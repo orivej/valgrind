@@ -1783,6 +1783,7 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
             prev_svma = a_phdr.p_vaddr;
             if (a_phdr.p_memsz > 0) {
                Bool loaded = False;
+               // asm("int3");
                for (j = 0; j < VG_(sizeXA)(di->fsm.maps); j++) {
                   const DebugInfoMapping* map = VG_(indexXA)(di->fsm.maps, j);
                   if (   (map->rx || map->rw)
@@ -3207,6 +3208,7 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
 
       if (svma_ranges) VG_(deleteXA)(svma_ranges);
 
+      vg_assert(res);
       return res;
    } /* out: */ 
 
