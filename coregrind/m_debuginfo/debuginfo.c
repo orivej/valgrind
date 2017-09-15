@@ -1115,13 +1115,16 @@ ULong VG_(di_notify_mmap)( Addr a, Bool allow_SkFileV, Int use_fd )
       || defined(VGA_mips64)
    is_rx_map = seg->hasR && seg->hasX;
    is_rw_map = seg->hasR && seg->hasW;
+   is_ro_map = seg->hasR && !is_rx_map && !is_rw_map;
 #  elif defined(VGA_amd64) || defined(VGA_ppc64be) || defined(VGA_ppc64le)  \
         || defined(VGA_arm) || defined(VGA_arm64)
    is_rx_map = seg->hasR && seg->hasX && !seg->hasW;
    is_rw_map = seg->hasR && seg->hasW && !seg->hasX;
+   is_ro_map = seg->hasR && !is_rx_map && !is_rw_map;
 #  elif defined(VGP_s390x_linux)
    is_rx_map = seg->hasR && seg->hasX && !seg->hasW;
    is_rw_map = seg->hasR && seg->hasW;
+   is_ro_map = seg->hasR && !is_rx_map && !is_rw_map;
 #  else
 #    error "Unknown platform"
 #  endif
