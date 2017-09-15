@@ -1786,7 +1786,7 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
                // asm("int3");
                for (j = 0; j < VG_(sizeXA)(di->fsm.maps); j++) {
                   const DebugInfoMapping* map = VG_(indexXA)(di->fsm.maps, j);
-                  if (   (map->rx || map->rw)
+                  if (   (map->rx || map->rw || map->ro)
                       && map->size > 0 /* stay sane */
                       && a_phdr.p_offset >= map->foff
                       && a_phdr.p_offset <  map->foff + map->size
@@ -1797,6 +1797,16 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
                      item.svma_limit = a_phdr.p_vaddr + a_phdr.p_memsz;
                      item.bias       = map->avma - map->foff
                                        + a_phdr.p_offset - a_phdr.p_vaddr;
+                     if (map->ro
+                         && (a_phdr.p_flags & PF_R)
+                            == PF_R) {
+                        item.exec = False;
+                        VG_(addToXA)(svma_ranges, &item);
+                        TRACE_SYMTAB(
+                           "PT_LOAD[%ld]:   acquired as ro, bias 0x%lx\n",
+                           i, (UWord)item.bias);
+                        loaded = True;
+                     }
                      if (map->rw
                          && (a_phdr.p_flags & (PF_R | PF_W))
                             == (PF_R | PF_W)) {
@@ -1924,13 +1934,17 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
          TRACE_SYMTAB("  svmas %#lx .. %#lx with bias %#lx\n",
                       reg->svma_base, reg->svma_limit - 1, (UWord)reg->bias );
    }
+
    for (i = 0; i < VG_(sizeXA)(di->fsm.maps); i++) {
       const DebugInfoMapping* map = VG_(indexXA)(di->fsm.maps, i);
       if (map->rw)
          TRACE_SYMTAB("rw: at %#lx are mapped foffsets %ld .. %lu\n",
                       map->avma, map->foff, map->foff + map->size - 1 );
+      if (map->ro)
+         TRACE_SYMTAB("ro: at %#lx are mapped foffsets %ld .. %lu\n",
+                      map->avma, map->foff, map->foff + map->size - 1 );
    }
-   TRACE_SYMTAB("rw: contains these svma regions:\n");
+   TRACE_SYMTAB("rw and ro: contain these svma regions:\n");
    for (i = 0; i < VG_(sizeXA)(svma_ranges); i++) {
       const RangeAndBias* reg = VG_(indexXA)(svma_ranges, i);
       if (!reg->exec)
