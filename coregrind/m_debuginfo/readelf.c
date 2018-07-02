@@ -282,8 +282,8 @@ Bool get_elf_symbol_info (
    Bool is_in_opd;
 #  endif
    Bool in_text, in_data, in_sdata, in_rodata, in_bss, in_sbss;
-   Addr text_svma, data_svma, sdata_svma, rodata_svma, bss_svma, sbss_svma;
-   PtrdiffT text_bias, data_bias, sdata_bias, rodata_bias, bss_bias, sbss_bias;
+   Addr text_svma, data_svma, sdata_svma, rodata_rx_svma, rodata_ro_svma, bss_svma, sbss_svma;
+   PtrdiffT text_bias, data_bias, sdata_bias, rodata_rx_bias, rodata_ro_bias, bss_bias, sbss_bias;
 #     if defined(VGPV_arm_linux_android) \
          || defined(VGPV_x86_linux_android) \
          || defined(VGPV_mips32_linux_android) \
@@ -342,8 +342,10 @@ Bool get_elf_symbol_info (
       data_bias = di->data_debug_bias;
       sdata_svma = di->sdata_debug_svma;
       sdata_bias = di->sdata_debug_bias;
-      rodata_svma = di->rodata_debug_svma;
-      rodata_bias = di->rodata_debug_bias;
+      rodata_rx_svma = di->rodata_rx_debug_svma;
+      rodata_rx_bias = di->rodata_rx_debug_bias;
+      rodata_ro_svma = di->rodata_ro_debug_svma;
+      rodata_ro_bias = di->rodata_ro_debug_bias;
       bss_svma = di->bss_debug_svma;
       bss_bias = di->bss_debug_bias;
       sbss_svma = di->sbss_debug_svma;
@@ -355,8 +357,10 @@ Bool get_elf_symbol_info (
       data_bias = di->data_bias;
       sdata_svma = di->sdata_svma;
       sdata_bias = di->sdata_bias;
-      rodata_svma = di->rodata_svma;
-      rodata_bias = di->rodata_bias;
+      rodata_rx_svma = di->rodata_rx_svma;
+      rodata_rx_bias = di->rodata_rx_bias;
+      rodata_ro_svma = di->rodata_ro_svma;
+      rodata_ro_bias = di->rodata_ro_bias;
       bss_svma = di->bss_svma;
       bss_bias = di->bss_bias;
       sbss_svma = di->sbss_svma;
@@ -390,13 +394,21 @@ Bool get_elf_symbol_info (
       (*sym_avmas_out).main += sdata_bias;
       COMPUTE_AVAILABLE_SIZE(sdata_svma, di->sdata_size);
    } else
-   if (di->rodata_present
-       && di->rodata_size > 0
-       && sym_svma >= rodata_svma 
-       && sym_svma < rodata_svma + di->rodata_size) {
+   if (di->rodata_rx_present
+       && di->rodata_rx_size > 0
+       && sym_svma >= rodata_rx_svma 
+       && sym_svma < rodata_rx_svma + di->rodata_rx_size) {
       *is_text_out = False;
-      (*sym_avmas_out).main += rodata_bias;
-      COMPUTE_AVAILABLE_SIZE(rodata_svma, di->rodata_size);
+      (*sym_avmas_out).main += rodata_rx_bias;
+      COMPUTE_AVAILABLE_SIZE(rodata_rx_svma, di->rodata_rx_size);
+   } else
+   if (di->rodata_ro_present
+       && di->rodata_ro_size > 0
+       && sym_svma >= rodata_ro_svma 
+       && sym_svma < rodata_ro_svma + di->rodata_ro_size) {
+      *is_text_out = False;
+      (*sym_avmas_out).main += rodata_ro_bias;
+      COMPUTE_AVAILABLE_SIZE(rodata_ro_svma, di->rodata_ro_size);
    } else
    if (di->bss_present
        && di->bss_size > 0
@@ -677,10 +689,14 @@ Bool get_elf_symbol_info (
              || (*sym_avmas_out).main >= di->sdata_avma + di->sdata_size);
 
    in_rodata 
-      = di->rodata_present
-        && di->rodata_size > 0
-        && !((*sym_avmas_out).main + *sym_size_out <= di->rodata_avma
-             || (*sym_avmas_out).main >= di->rodata_avma + di->rodata_size);
+      = ( di->rodata_rx_present
+          && di->rodata_rx_size > 0
+          && !((*sym_avmas_out).main + *sym_size_out <= di->rodata_rx_avma
+               || (*sym_avmas_out).main >= di->rodata_rx_avma + di->rodata_rx_size))
+      || ( di->rodata_ro_present
+          && di->rodata_ro_size > 0
+          && !((*sym_avmas_out).main + *sym_size_out <= di->rodata_ro_avma
+               || (*sym_avmas_out).main >= di->rodata_ro_avma + di->rodata_ro_size));
 
    in_bss 
       = di->bss_present
@@ -1675,7 +1691,7 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
    UWord    shdr_ment_szB     = 0;
    DiOffT   shdr_strtab_mioff = 0;
 
-   /* SVMAs covered by rx and rw segments and corresponding biases.
+   /* SVMAs covered by rx, rw and ro segments and corresponding biases.
       Normally each object would provide just one rx and one rw area,
       but various ELF mangling tools create objects with multiple
       such entries, hence the generality. */
@@ -1685,6 +1701,7 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
          Addr     svma_limit;
          PtrdiffT bias;
          Bool     exec;
+         Bool     ro;
       }
       RangeAndBias;
 
@@ -1896,6 +1913,7 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
                          && (a_phdr.p_flags & PF_R)
                             == PF_R) {
                         item.exec = False;
+                        item.ro = True;
                         VG_(addToXA)(svma_ranges, &item);
                         TRACE_SYMTAB(
                            "PT_LOAD[%ld]:   acquired as ro, bias 0x%lx\n",
@@ -1906,6 +1924,7 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
                          && (a_phdr.p_flags & (PF_R | PF_W))
                             == (PF_R | PF_W)) {
                         item.exec = False;
+                        item.ro = False;
                         VG_(addToXA)(svma_ranges, &item);
                         TRACE_SYMTAB(
                            "PT_LOAD[%ld]:   acquired as rw, bias 0x%lx\n",
@@ -1916,6 +1935,7 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
                          && (a_phdr.p_flags & (PF_R | PF_X))
                             == (PF_R | PF_X)) {
                         item.exec = True;
+                        item.ro = False;
                         VG_(addToXA)(svma_ranges, &item);
                         TRACE_SYMTAB(
                            "PT_LOAD[%ld]:   acquired as rx, bias 0x%lx\n",
@@ -2035,14 +2055,25 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
       if (map->rw)
          TRACE_SYMTAB("rw: at %#lx are mapped foffsets %ld .. %lu\n",
                       map->avma, map->foff, map->foff + map->size - 1 );
+   }
+   TRACE_SYMTAB("rw: contains these svma regions:\n");
+   for (i = 0; i < VG_(sizeXA)(svma_ranges); i++) {
+      const RangeAndBias* reg = VG_(indexXA)(svma_ranges, i);
+      if (!reg->exec && !reg->ro)
+         TRACE_SYMTAB("  svmas %#lx .. %#lx with bias %#lx\n",
+                      reg->svma_base, reg->svma_limit - 1, (UWord)reg->bias );
+   }
+
+   for (i = 0; i < VG_(sizeXA)(di->fsm.maps); i++) {
+      const DebugInfoMapping* map = VG_(indexXA)(di->fsm.maps, i);
       if (map->ro)
          TRACE_SYMTAB("ro: at %#lx are mapped foffsets %ld .. %lu\n",
                       map->avma, map->foff, map->foff + map->size - 1 );
    }
-   TRACE_SYMTAB("rw and ro: contain these svma regions:\n");
+   TRACE_SYMTAB("ro: contains these svma regions:\n");
    for (i = 0; i < VG_(sizeXA)(svma_ranges); i++) {
       const RangeAndBias* reg = VG_(indexXA)(svma_ranges, i);
-      if (!reg->exec)
+      if (reg->ro)
          TRACE_SYMTAB("  svmas %#lx .. %#lx with bias %#lx\n",
                       reg->svma_base, reg->svma_limit - 1, (UWord)reg->bias );
    }
@@ -2061,27 +2092,30 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
       UInt   alyn = a_shdr.sh_addralign;
       Bool   nobits = a_shdr.sh_type == SHT_NOBITS;
       /* Look through our collection of info obtained from the PT_LOAD
-         headers, and make 'inrx' and 'inrw' point to the first entry
+         headers, and make 'inrx', 'inrw' and 'inro' point to the first entry
          in each that intersects 'avma'.  If in each case none is found,
          leave the relevant pointer at NULL. */
       RangeAndBias* inrx = NULL;
       RangeAndBias* inrw = NULL;
+      RangeAndBias* inro = NULL;
       for (j = 0; j < VG_(sizeXA)(svma_ranges); j++) {
          RangeAndBias* rng = VG_(indexXA)(svma_ranges, j);
          if (svma >= rng->svma_base && svma < rng->svma_limit) {
             if (!inrx && rng->exec) {
                inrx = rng;
-            } else if (!inrw && !rng->exec) {
+            } else if (!inrw && !rng->exec && !rng->ro) {
                inrw = rng;
+            } else if (!inro && rng->ro) {
+               inro = rng;
             }
-            if (inrx && inrw)
+            if (inrx && inrw && inro)
                break;
          }
       }
 
-      TRACE_SYMTAB(" [sec %2ld]  %s %s  al%4u  foff %6ld .. %6lu  "
+      TRACE_SYMTAB(" [sec %2ld]  %s %s %s al%4u  foff %6ld .. %6lu  "
                    "  svma %p  name \"%s\"\n", 
-                   i, inrx ? "rx" : "  ", inrw ? "rw" : "  ", alyn,
+                   i, inrx ? "rx" : "  ", inrw ? "rw" : "  ", inro ? "ro" : "  ", alyn,
                    foff, (size == 0) ? foff : foff+size-1, (void *) svma, name);
 
       /* Check for sane-sized segments.  SHT_NOBITS sections have zero
@@ -2193,25 +2227,44 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
          }
       }
 
-      /* Accept .rodata where mapped as rx (data), even if zero-sized */
+      /* Accept .rodata where mapped as rx or ro (data), even if zero-sized */
       if (0 == VG_(strcmp)(name, ".rodata")) {
-         if (inrx && !di->rodata_present) {
-            di->rodata_present = True;
-            di->rodata_svma = svma;
-            di->rodata_avma = svma + inrx->bias;
-            di->rodata_size = size;
-            di->rodata_bias = inrx->bias;
-            di->rodata_debug_svma = svma;
-            di->rodata_debug_bias = inrx->bias;
+         if (inrx && !di->rodata_rx_present) {
+            di->rodata_rx_present = True;
+            di->rodata_rx_svma = svma;
+            di->rodata_rx_avma = svma + inrx->bias;
+            di->rodata_rx_size = size;
+            di->rodata_rx_bias = inrx->bias;
+            di->rodata_rx_debug_svma = svma;
+            di->rodata_rx_debug_bias = inrx->bias;
                                     /* NB was 'inrw' prior to r11794 */
-            TRACE_SYMTAB("acquiring .rodata svma = %#lx .. %#lx\n",
-                         di->rodata_svma,
-                         di->rodata_svma + di->rodata_size - 1);
-            TRACE_SYMTAB("acquiring .rodata avma = %#lx .. %#lx\n",
-                         di->rodata_avma,
-                         di->rodata_avma + di->rodata_size - 1);
-            TRACE_SYMTAB("acquiring .rodata bias = %#lx\n",
-                         (UWord)di->rodata_bias);
+            TRACE_SYMTAB("acquiring .rodata (rx) svma = %#lx .. %#lx\n",
+                         di->rodata_rx_svma,
+                         di->rodata_rx_svma + di->rodata_rx_size - 1);
+            TRACE_SYMTAB("acquiring .rodata (rx) avma = %#lx .. %#lx\n",
+                         di->rodata_rx_avma,
+                         di->rodata_rx_avma + di->rodata_rx_size - 1);
+            TRACE_SYMTAB("acquiring .rodata (rx) bias = %#lx\n",
+                         (UWord)di->rodata_rx_bias);
+         } else
+
+         if (inro && !di->rodata_ro_present) {
+            di->rodata_ro_present = True;
+            di->rodata_ro_svma = svma;
+            di->rodata_ro_avma = svma + inro->bias;
+            di->rodata_ro_size = size;
+            di->rodata_ro_bias = inro->bias;
+            di->rodata_ro_debug_svma = svma;
+            di->rodata_ro_debug_bias = inro->bias;
+                                    /* NB was 'inrw' prior to r11794 */
+            TRACE_SYMTAB("acquiring .rodata (ro) svma = %#lx .. %#lx\n",
+                         di->rodata_ro_svma,
+                         di->rodata_ro_svma + di->rodata_ro_size - 1);
+            TRACE_SYMTAB("acquiring .rodata (ro) avma = %#lx .. %#lx\n",
+                         di->rodata_ro_avma,
+                         di->rodata_ro_avma + di->rodata_ro_size - 1);
+            TRACE_SYMTAB("acquiring .rodata (ro) bias = %#lx\n",
+                         (UWord)di->rodata_ro_bias);
          } else {
             BAD(".rodata");
          }
@@ -2452,7 +2505,8 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
       /* Accept .eh_frame where mapped as rx (code).  This seems to be
          the common case.  However, if that doesn't pan out, try for
          rw (data) instead.  We can handle up to N_EHFRAME_SECTS per
-         ELF object. */
+         ELF object.
+         With readonly segments it is also possible it is mapped as ro. */
       if (0 == VG_(strcmp)(name, ".eh_frame")) {
          if (inrx && di->n_ehframe < N_EHFRAME_SECTS) {
             di->ehframe_avma[di->n_ehframe] = svma + inrx->bias;
@@ -2463,6 +2517,13 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
          } else
          if (inrw && di->n_ehframe < N_EHFRAME_SECTS) {
             di->ehframe_avma[di->n_ehframe] = svma + inrw->bias;
+            di->ehframe_size[di->n_ehframe] = size;
+            TRACE_SYMTAB("acquiring .eh_frame avma = %#lx\n",
+                         di->ehframe_avma[di->n_ehframe]);
+            di->n_ehframe++;
+         } else
+         if (inro && di->n_ehframe < N_EHFRAME_SECTS) {
+            di->ehframe_avma[di->n_ehframe] = svma + inro->bias;
             di->ehframe_size[di->n_ehframe] = size;
             TRACE_SYMTAB("acquiring .eh_frame avma = %#lx\n",
                          di->ehframe_avma[di->n_ehframe]);
@@ -2908,7 +2969,8 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
             FIND(text,   rx)
             FIND(data,   rw)
             FIND(sdata,  rw)
-            FIND(rodata, rw)
+            FIND(rodata_rx, rw)
+            FIND(rodata_ro, rw)
             FIND(bss,    rw)
             FIND(sbss,   rw)
 

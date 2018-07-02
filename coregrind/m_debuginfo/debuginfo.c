@@ -1870,10 +1870,15 @@ static void search_all_symtabs ( DiEpoch ep, Addr ptr,
                     && di->sbss_avma <= ptr 
                     && ptr < di->sbss_avma + di->sbss_size)
                    ||
-                   (di->rodata_present
-                    && di->rodata_size > 0
-                    && di->rodata_avma <= ptr 
-                    && ptr < di->rodata_avma + di->rodata_size);
+                   (di->rodata_rx_present
+                    && di->rodata_rx_size > 0
+                    && di->rodata_rx_avma <= ptr 
+                    && ptr < di->rodata_rx_avma + di->rodata_rx_size)
+                   ||
+                   (di->rodata_ro_present
+                    && di->rodata_ro_size > 0
+                    && di->rodata_ro_avma <= ptr 
+                    && ptr < di->rodata_ro_avma + di->rodata_ro_size);
       }
 
       if (!inRange) continue;

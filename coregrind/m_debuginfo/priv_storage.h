@@ -807,14 +807,22 @@ struct _DebugInfo {
    PtrdiffT sdata_bias;
    Addr     sdata_debug_svma;
    PtrdiffT sdata_debug_bias;
-   /* .rodata */
-   Bool     rodata_present;
-   Addr     rodata_svma;
-   Addr     rodata_avma;
-   SizeT    rodata_size;
-   PtrdiffT rodata_bias;
-   Addr     rodata_debug_svma;
-   PtrdiffT rodata_debug_bias;
+   /* .rodata as rx */
+   Bool     rodata_rx_present;
+   Addr     rodata_rx_svma;
+   Addr     rodata_rx_avma;
+   SizeT    rodata_rx_size;
+   PtrdiffT rodata_rx_bias;
+   Addr     rodata_rx_debug_svma;
+   PtrdiffT rodata_rx_debug_bias;
+   /* .rodata as ro */
+   Bool     rodata_ro_present;
+   Addr     rodata_ro_svma;
+   Addr     rodata_ro_avma;
+   SizeT    rodata_ro_size;
+   PtrdiffT rodata_ro_bias;
+   Addr     rodata_ro_debug_svma;
+   PtrdiffT rodata_ro_debug_bias;
    /* .bss */
    Bool     bss_present;
    Addr     bss_svma;
